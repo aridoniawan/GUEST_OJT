@@ -83,6 +83,8 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; backgrou
 .btn.toggle { width: 100%; }
 .btn.on { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
 .btn.off { background: var(--inset); color: var(--text); border-color: var(--border); }
+.btn.danger { background: transparent; color: var(--err); border-color: var(--border); }
+.btn.danger:hover:not(:disabled) { background: var(--err-bg); border-color: var(--err); }
 
 .field { margin-bottom: 14px; }
 .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
@@ -126,6 +128,8 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; backgrou
 @keyframes pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .badge.on .dot { animation: none; } }
 .device-meta { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+.device-actions { display: flex; gap: 8px; align-items: center; }
+.device-actions .btn.toggle { flex: 1; }
 .device-err { font-size: 13px; color: var(--err); background: var(--err-bg); border-radius: 8px; padding: 6px 10px; word-break: break-word; }
 .updated { font-size: 12px; color: var(--muted); margin-left: auto; }
 

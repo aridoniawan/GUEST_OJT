@@ -105,6 +105,19 @@ export async function touchSeen(id) {
   await writeKey(KEY_SEEN, seen);
 }
 
+export async function removeDevice(id) {
+  const all = await readKey(KEY_DEVICES);
+  if (!all[id]) return false;
+  delete all[id];
+  await writeKey(KEY_DEVICES, all);
+  const seen = await readKey(KEY_SEEN);
+  if (seen[id]) {
+    delete seen[id];
+    await writeKey(KEY_SEEN, seen);
+  }
+  return true;
+}
+
 export async function listDevices() {
   const [all, seen] = await Promise.all([readKey(KEY_DEVICES), readKey(KEY_SEEN)]);
   return Object.values(all)

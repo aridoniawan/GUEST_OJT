@@ -96,6 +96,17 @@ check('status ERROR tersimpan', listBody.devices[0] && listBody.devices[0].hotsp
 const listNoAuth = await devices(makeReq('GET', '/api/devices'));
 check('devices tanpa login ditolak (401)', listNoAuth.status === 401);
 
+console.log('== Remove device ==');
+const remove = await load('remove');
+const rmNoAuth = await remove(makeReq('POST', '/api/remove', { device_id: devId }));
+check('remove tanpa login ditolak (401)', rmNoAuth.status === 401);
+const rmMissing = await remove(makeReq('POST', '/api/remove', { device_id: 'tidak-ada-device' }, adminToken));
+check('remove device tak dikenal ditolak (404)', rmMissing.status === 404);
+const rmDev = await remove(makeReq('POST', '/api/remove', { device_id: devId }, adminToken));
+check('remove device sukses', rmDev.status === 200 && (await rmDev.json()).ok);
+const listAfter = await devices(makeReq('GET', '/api/devices', null, adminToken));
+check('device hilang setelah remove', (await listAfter.json()).devices.length === 0);
+
 console.log('== Script download ==');
 const script = await load('script');
 const scr = await script(makeReq('GET', '/api/script'));

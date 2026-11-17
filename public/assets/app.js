@@ -107,7 +107,10 @@
       '</div>' +
       (dev.error ? '<div class="device-err">' + escapeHtml(dev.error) + '</div>' : '') +
       '<div class="device-meta"><span class="conn"></span></div>' +
-      '<button type="button" class="btn toggle"></button>';
+      '<div class="device-actions">' +
+        '<button type="button" class="btn toggle"></button>' +
+        '<button type="button" class="btn danger small">Hapus PC</button>' +
+      '</div>';
 
     card.querySelector('.device-name').textContent = dev.name;
     card.querySelector('.device-id').textContent = dev.id;
@@ -130,6 +133,15 @@
         btn.disabled = false;
         btn.textContent = isOn ? 'Matikan Hotspot' : 'Nyalakan Hotspot';
         alert('Gagal mengirim perintah: ' + e.message);
+      }
+    });
+    card.querySelector('.btn.danger').addEventListener('click', async () => {
+      if (!confirm('Hapus PC "' + dev.name + '" dari dashboard?\nPC tetap bisa didaftarkan ulang dengan menjalankan installer.')) return;
+      try {
+        await api('/remove', { method: 'POST', body: JSON.stringify({ device_id: dev.id }) });
+        loadDevices();
+      } catch (e) {
+        alert('Gagal menghapus: ' + e.message);
       }
     });
     return card;
