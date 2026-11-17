@@ -48,9 +48,13 @@ const devId = regBody.device_id, devToken = regBody.token;
 
 console.log('== Poll & Command ==');
 const poll1 = await poll(makeReq('GET', `/api/poll?device_id=${devId}&token=${devToken}`));
-check('poll awal tanpa perintah', (await poll1.json()).command === null);
+check('poll GET awal tanpa perintah', (await poll1.json()).command === null);
+const poll1p = await poll(makeReq('POST', '/api/poll', { device_id: devId, token: devToken }));
+check('poll POST awal tanpa perintah', (await poll1p.json()).command === null);
 const pollBad = await poll(makeReq('GET', `/api/poll?device_id=${devId}&token=tokepalsu`));
 check('poll token salah ditolak (403)', pollBad.status === 403);
+const pollBadP = await poll(makeReq('POST', '/api/poll', { device_id: devId, token: 'tokepalsu' }));
+check('poll POST token salah ditolak (403)', pollBadP.status === 403);
 
 const cmdNoAuth = await command(makeReq('POST', '/api/command', { device_id: devId, action: 'ON' }));
 check('command tanpa login ditolak (401)', cmdNoAuth.status === 401);
@@ -58,7 +62,9 @@ const cmd = await command(makeReq('POST', '/api/command', { device_id: devId, ac
 check('command ON tersimpan', cmd.status === 200 && (await cmd.json()).pending === 'ON');
 
 const poll2 = await poll(makeReq('GET', `/api/poll?device_id=${devId}&token=${devToken}`));
-check('poll mengembalikan perintah ON', (await poll2.json()).command === 'ON');
+check('poll GET mengembalikan perintah ON', (await poll2.json()).command === 'ON');
+const poll2p = await poll(makeReq('POST', '/api/poll', { device_id: devId, token: devToken }));
+check('poll POST mengembalikan perintah ON', (await poll2p.json()).command === 'ON');
 
 console.log('== Report ==');
 const rep = await report(makeReq('POST', '/api/report', { device_id: devId, token: devToken, hotspot: 'ON', error: '' }));

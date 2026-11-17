@@ -48,19 +48,77 @@ try {
   Set-Service -Name icssvc -StartupType Automatic -ErrorAction SilentlyContinue
   Start-Service -Name icssvc -ErrorAction SilentlyContinue
 } catch { }
+
+# --- Hapus policy pemblokir (NC_ShowSharedAccessUI) bila ada ---
+$polKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Network Connections'
+try {
+  $polVal = (Get-ItemProperty -Path $polKey -Name NC_ShowSharedAccessUI -ErrorAction SilentlyContinue).NC_ShowSharedAccessUI
+  if ($null -ne $polVal) {
+    Set-Content -Path (Join-Path $Dir 'policy-backup.txt') -Value "NC_ShowSharedAccessUI=$polVal"
+    Remove-ItemProperty -Path $polKey -Name NC_ShowSharedAccessUI -ErrorAction Stop
+    Restart-Service icssvc -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    Write-Host '      Policy pemblokir hotspot ditemukan & dinonaktifkan (backup di policy-backup.txt).' -ForegroundColor Yellow
+  }
+} catch { }
+
+# --- Matikan fitur auto-off hotspot saat tidak ada klien (tanpa ini hotspot bisa mati sendiri) ---
+try {
+  $nct = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::IsNoConnectionsTimeoutEnabled()
+  if ($nct) {
+    [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::DisableNoConnectionsTimeout()
+    Write-Host '      Auto-off hotspot saat tanpa klien: DINONAKTIFKAN.' -ForegroundColor Yellow
+  }
+} catch { }
 Write-Host '      Selesai.' -ForegroundColor Green
 
-# --- Helper WinRT (API resmi Mobile Hotspot Windows 10/11) ---
+# --- Helper WinRT (tahan terhadap bug proyeksi async PS 5.1 di build Windows baru) ---
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
-  $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
-})[0]
+if (-not ('WifiGuest.AsyncWaiter' -as [type])) {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
 
-function Await($WinRtTask, $ResultType) {
-  $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-  $netTask = $asTask.Invoke($null, @($WinRtTask))
-  $netTask.Wait(-1) | Out-Null
-  return $netTask.Result
+namespace WifiGuest {
+  public enum AsyncStatusRaw { Started = 0, Completed = 1, Canceled = 2, Error = 3 }
+
+  [ComImport, Guid("00000036-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IAsyncInfoRaw {
+    void GetIids(out int iidCount, out IntPtr iids);
+    void GetRuntimeClassName(out IntPtr className);
+    void GetTrustLevel(out int trustLevel);
+    uint get_Id();
+    AsyncStatusRaw get_Status();
+    int get_ErrorCode();
+    void Cancel();
+    void Close();
+  }
+
+  public static class AsyncWaiter {
+    public static string Wait(object opObj, int timeoutMs) {
+      try {
+        var info = (IAsyncInfoRaw)opObj;
+        int waited = 0;
+        while (info.get_Status() == AsyncStatusRaw.Started && waited < timeoutMs) {
+          System.Threading.Thread.Sleep(200);
+          waited += 200;
+        }
+        var st = info.get_Status();
+        if (st == AsyncStatusRaw.Completed) return "OK";
+        if (st == AsyncStatusRaw.Error) return "ERROR;HRESULT=0x" + info.get_ErrorCode().ToString("X8");
+        if (st == AsyncStatusRaw.Canceled) return "CANCELED";
+        return "TIMEOUT";
+      } catch (Exception ex) {
+        return "WAITER_ERR:" + ex.GetType().Name + ":" + ex.Message;
+      }
+    }
+  }
+}
+'@
+}
+
+function Wait-WinRTOp($op, $timeoutMs = 60000) {
+  return [WifiGuest.AsyncWaiter]::Wait($op, $timeoutMs)
 }
 
 function Get-TetheringManager {
@@ -69,25 +127,48 @@ function Get-TetheringManager {
   return [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($cp)
 }
 
+function Set-HotspotState($On) {
+  $tm = Get-TetheringManager
+  $target = if ($On) { 'On' } else { 'Off' }
+  $opResult = ''
+  if ($On) {
+    $op = $tm.StartTetheringAsync()
+    $opResult = Wait-WinRTOp $op 90000
+  } else {
+    $op = $tm.StopTetheringAsync()
+    $opResult = Wait-WinRTOp $op 60000
+  }
+  $deadline = (Get-Date).AddSeconds(90)
+  while ((Get-Date) -lt $deadline) {
+    if ($tm.TetheringOperationalState.ToString() -eq $target) { return 'OK' }
+    Start-Sleep -Seconds 3
+  }
+  return $opResult
+}
+
 # --- Buat konfigurasi hotspot & nyalakan ---
 Write-Host '[2/5] Membuat konfigurasi hotspot Store_Guest...' -ForegroundColor Yellow
 $hotspotState = 'UNKNOWN'
 $hotspotError = ''
 try {
-  $null = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringAccessPointConfiguration,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]
   $tm = Get-TetheringManager
   try {
-    $null = Await ($tm.StopTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+    if ($tm.TetheringOperationalState.ToString() -ne 'Off') { $null = Set-HotspotState $false }
   } catch { }
   $cfg = New-Object Windows.Networking.NetworkOperators.NetworkOperatorTetheringAccessPointConfiguration
   $cfg.Ssid = 'Store_Guest'
   $cfg.Passphrase = 'ABAGUEST26'
-  $res = Await ($tm.ConfigureAccessPointAsync($cfg)) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-  if ($res.Status.ToString() -eq 'Success') {
-    $res = Await ($tm.StartTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-    if ($res.Status.ToString() -eq 'Success') { $hotspotState = 'ON' } else { $hotspotError = "StartTethering: $($res.Status)" }
+  $cfgRes = Wait-WinRTOp ($tm.ConfigureAccessPointAsync($cfg)) 60000
+  if ($cfgRes -ne 'OK') {
+    $hotspotError = "ConfigureAccessPoint: $cfgRes"
   } else {
-    $hotspotError = "ConfigureAccessPoint: $($res.Status)"
+    $check = $tm.GetCurrentAccessPointConfiguration()
+    if ($check.Ssid -ne 'Store_Guest') {
+      $hotspotError = 'ConfigureAccessPoint: SSID tidak tersimpan.'
+    } else {
+      $st = Set-HotspotState $true
+      if ($st -eq 'OK') { $hotspotState = 'ON' } else { $hotspotError = "StartTethering: $st" }
+    }
   }
 } catch {
   $hotspotError = $_.Exception.Message
@@ -149,7 +230,7 @@ try {
 try {
   $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}\agent.ps1"' -f $Dir)
   $t1 = New-ScheduledTaskTrigger -AtStartup
-  $t2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
+  $t2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration ([TimeSpan]::FromDays(3650))
   $registered = $false
   try {
     $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Highest

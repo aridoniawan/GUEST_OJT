@@ -26,17 +26,53 @@ function Log($msg) {
   } catch { }
 }
 
-# --- Helper WinRT ---
+# --- Helper WinRT (tahan terhadap bug proyeksi async PS 5.1 di build Windows baru) ---
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
-  $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
-})[0]
+if (-not ('WifiGuest.AsyncWaiter' -as [type])) {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
 
-function Await($WinRtTask, $ResultType) {
-  $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-  $netTask = $asTask.Invoke($null, @($WinRtTask))
-  $netTask.Wait(-1) | Out-Null
-  return $netTask.Result
+namespace WifiGuest {
+  public enum AsyncStatusRaw { Started = 0, Completed = 1, Canceled = 2, Error = 3 }
+
+  [ComImport, Guid("00000036-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IAsyncInfoRaw {
+    void GetIids(out int iidCount, out IntPtr iids);
+    void GetRuntimeClassName(out IntPtr className);
+    void GetTrustLevel(out int trustLevel);
+    uint get_Id();
+    AsyncStatusRaw get_Status();
+    int get_ErrorCode();
+    void Cancel();
+    void Close();
+  }
+
+  public static class AsyncWaiter {
+    public static string Wait(object opObj, int timeoutMs) {
+      try {
+        var info = (IAsyncInfoRaw)opObj;
+        int waited = 0;
+        while (info.get_Status() == AsyncStatusRaw.Started && waited < timeoutMs) {
+          System.Threading.Thread.Sleep(200);
+          waited += 200;
+        }
+        var st = info.get_Status();
+        if (st == AsyncStatusRaw.Completed) return "OK";
+        if (st == AsyncStatusRaw.Error) return "ERROR;HRESULT=0x" + info.get_ErrorCode().ToString("X8");
+        if (st == AsyncStatusRaw.Canceled) return "CANCELED";
+        return "TIMEOUT";
+      } catch (Exception ex) {
+        return "WAITER_ERR:" + ex.GetType().Name + ":" + ex.Message;
+      }
+    }
+  }
+}
+'@
+}
+
+function Wait-WinRTOp($op, $timeoutMs = 60000) {
+  return [WifiGuest.AsyncWaiter]::Wait($op, $timeoutMs)
 }
 
 function Get-TetheringManager {
@@ -56,13 +92,50 @@ function Get-HotspotState {
 
 function Set-HotspotState($On) {
   $tm = Get-TetheringManager
+  $target = if ($On) { 'On' } else { 'Off' }
+  $opResult = ''
   if ($On) {
-    $res = Await ($tm.StartTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+    $op = $tm.StartTetheringAsync()
+    $opResult = Wait-WinRTOp $op 90000
   } else {
-    $res = Await ($tm.StopTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+    $op = $tm.StopTetheringAsync()
+    $opResult = Wait-WinRTOp $op 60000
   }
-  return $res.Status.ToString()
+  # Verifikasi lewat state aktual (hasil op saja tidak cukup di beberapa build)
+  $deadline = (Get-Date).AddSeconds(90)
+  while ((Get-Date) -lt $deadline) {
+    if ($tm.TetheringOperationalState.ToString() -eq $target) { return 'OK' }
+    Start-Sleep -Seconds 3
+  }
+  return $opResult
 }
+
+function Unblock-HotspotPolicy {
+  # Policy NC_ShowSharedAccessUI=0 (Prohibit ICS) memblokir Mobile Hotspot diam-diam
+  $polKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Network Connections'
+  try {
+    $val = (Get-ItemProperty -Path $polKey -Name NC_ShowSharedAccessUI -ErrorAction SilentlyContinue).NC_ShowSharedAccessUI
+    if ($null -ne $val) {
+      Set-Content -Path (Join-Path $Dir 'policy-backup.txt') -Value "NC_ShowSharedAccessUI=$val"
+      Remove-ItemProperty -Path $polKey -Name NC_ShowSharedAccessUI -ErrorAction Stop
+      Restart-Service icssvc -Force -ErrorAction SilentlyContinue
+      Start-Sleep -Seconds 2
+      return $true
+    }
+  } catch { }
+  return $false
+}
+
+# --- Pastikan policy pemblokir tidak aktif ---
+if (Unblock-HotspotPolicy) { Log 'Policy pemblokir hotspot (NC_ShowSharedAccessUI) dinonaktifkan.' }
+
+# --- Matikan fitur auto-off hotspot saat tidak ada klien ---
+try {
+  if ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::IsNoConnectionsTimeoutEnabled()) {
+    [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::DisableNoConnectionsTimeout()
+    Log 'Auto-off hotspot (tanpa klien) dinonaktifkan.'
+  }
+} catch { }
 
 # --- Lapor status awal setelah boot/restart ---
 try {
@@ -71,12 +144,14 @@ try {
     $body0 = @{ device_id = $cfg.device_id; token = $cfg.token; hotspot = $st0; error = '' } | ConvertTo-Json
     $null = Invoke-RestMethod -Uri "$($cfg.server)/api/report" -Method Post -ContentType 'application/json; charset=utf-8' -Body $body0 -UseBasicParsing -TimeoutSec 20
   }
-} catch { }
+} catch { Log "report-startup GAGAL: $($_.Exception.Message)" }
 
 # --- Loop utama ---
+$lastPollErr = ''
 while ($true) {
   try {
-    $resp = Invoke-RestMethod -Uri "$($cfg.server)/api/poll?device_id=$($cfg.device_id)&token=$($cfg.token)" -UseBasicParsing -TimeoutSec 20
+    $pollBody = @{ device_id = $cfg.device_id; token = $cfg.token } | ConvertTo-Json
+    $resp = Invoke-RestMethod -Uri "$($cfg.server)/api/poll" -Method Post -ContentType 'application/json; charset=utf-8' -Body $pollBody -UseBasicParsing -TimeoutSec 20
     if ($resp.command -eq 'ON' -or $resp.command -eq 'OFF') {
       $cmd = $resp.command
       $on = ($cmd -eq 'ON')
@@ -92,7 +167,7 @@ while ($true) {
       if ($state -eq '') {
         try {
           $st = Set-HotspotState -On $on
-          if ($st -eq 'Success') { $state = if ($on) { 'ON' } else { 'OFF' } } else { $err = "WinRT: $st" }
+          if ($st -eq 'OK') { $state = if ($on) { 'ON' } else { 'OFF' } } else { $err = "WinRT: $st" }
         } catch { $err = $_.Exception.Message }
       }
 
@@ -113,9 +188,14 @@ while ($true) {
       try {
         $body = @{ device_id = $cfg.device_id; token = $cfg.token; hotspot = $state; error = $err } | ConvertTo-Json
         $null = Invoke-RestMethod -Uri "$($cfg.server)/api/report" -Method Post -ContentType 'application/json; charset=utf-8' -Body $body -UseBasicParsing -TimeoutSec 20
-      } catch { }
+      } catch { Log "report GAGAL (state=$state): $($_.Exception.Message)" }
       Log "command=$cmd state=$state error=$err"
     }
-  } catch { }
+  } catch {
+    if ($_.Exception.Message -ne $lastPollErr) {
+      Log "poll GAGAL: $($_.Exception.Message)"
+      $lastPollErr = $_.Exception.Message
+    }
+  }
   Start-Sleep -Seconds $interval
 }
