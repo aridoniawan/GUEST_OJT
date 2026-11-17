@@ -1,23 +1,16 @@
-import { createHash } from 'crypto';
-import { wrap, json, readBody } from './lib/http.mjs';
+import { wrap, json } from './lib/http.mjs';
+import report from './report.mjs';
 import { getDevice } from './lib/store.mjs';
 
 export default wrap(async (req) => {
-  const body = await readBody(req);
-  const deviceId = String(body.device_id || '');
-  const dev = await getDevice(deviceId);
+  const direct = await getDevice('ARI-TEST-f716c79e');
+  const r = await report(req);
+  let respBody = null;
+  try { respBody = await r.json(); } catch { }
   return json(200, {
-    reqUrl: String(req.url || ''),
-    method: req.method,
-    body,
-    deviceId,
-    devFound: !!dev,
-    devTokenHash: dev ? createHash('sha256').update(String(dev.token)).digest('hex').slice(0, 16) : null,
-    sentTokenHash: body.token ? createHash('sha256').update(String(body.token)).digest('hex').slice(0, 16) : null,
-    env: {
-      blobs: !!process.env.NETLIFY_BLOBS_CONTEXT,
-      siteId: (process.env.SITE_ID || '').slice(0, 12),
-      deployId: (process.env.DEPLOY_ID || '').slice(0, 16)
-    }
+    directDevFound: !!direct,
+    directTokenHash: direct ? String(direct.token).slice(0, 8) : null,
+    reportStatus: r.status,
+    reportBody: respBody
   });
 });
