@@ -5,7 +5,7 @@
 # ============================================================
 param(
   [string]$StoreName = '',
-  [string]$Server = '__SERVER_URL__'
+  [string]$Server = 'https://wifi-ojt.netlify.app'
 )
 
 $ErrorActionPreference = 'Stop'

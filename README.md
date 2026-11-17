@@ -19,7 +19,7 @@ Admin (browser) ⇄ Website + API (Netlify Functions) ⇄ Netlify Blobs (databas
 | --- | --- |
 | `public/` | Dashboard (login, daftar store, halaman download) + `agent.ps1` + `install.bat` |
 | `netlify/functions/` | API: `login`, `register`, `poll`, `report`, `command`, `devices`, `script` |
-| `scripts/install-agent.ps1` | Installer client (template, URL server di-inject saat download) |
+| `scripts/install-agent.ps1` | Installer client (default server `https://wifi-ojt.netlify.app`, URL di-inject otomatis saat download dari website) |
 | `scripts/` | Dev server lokal, test API, generator template |
 
 Alur perintah: admin klik ON/OFF → perintah disimpan di Blobs → PC store ambil saat polling →

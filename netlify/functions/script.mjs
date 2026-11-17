@@ -6,7 +6,9 @@ export default wrap(async (req) => {
   const host = req.headers.get('host') || 'localhost:8888';
   const proto = req.headers.get('x-forwarded-proto') || 'https';
   const serverUrl = `${proto}://${host}`;
-  const script = template.script.replaceAll('__SERVER_URL__', serverUrl);
+  const script = template.script
+    .replaceAll('__SERVER_URL__', serverUrl)
+    .replaceAll('https://wifi-ojt.netlify.app', serverUrl);
   return new Response(script, {
     status: 200,
     headers: {
