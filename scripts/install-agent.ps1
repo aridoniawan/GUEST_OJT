@@ -22,7 +22,7 @@ if (-not $isAdmin) {
 }
 
 Write-Host '==========================================' -ForegroundColor Cyan
-Write-Host ' WifiGuest - Installer Agent Hotspot Store' -ForegroundColor Cyan
+Write-Host ' WifiGuest - Installer Agent Hotspot Store (v3)' -ForegroundColor Cyan
 Write-Host '==========================================' -ForegroundColor Cyan
 Write-Host ''
 
@@ -34,9 +34,9 @@ $StoreName = $StoreName.Trim()
 
 $Server = $Server.TrimEnd('/')
 if ($Server -eq '' -or $Server -like '*__SERVER_URL__*') {
-  Write-Host 'ERROR: URL server belum diisi. Download ulang script dari halaman download website.' -ForegroundColor Red
-  Read-Host 'Tekan Enter untuk keluar'
-  exit 1
+  # Salinan installer lama tanpa URL: pakai URL default, jangan gagalkan instalasi.
+  $Server = 'https://wifi-ojt.netlify.app'
+  Write-Host '      Catatan: URL server otomatis diisi ke https://wifi-ojt.netlify.app' -ForegroundColor Yellow
 }
 
 $Dir = Join-Path $env:ProgramData 'WifiGuest'
