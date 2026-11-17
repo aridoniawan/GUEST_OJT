@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WifiGuest — Remote Hotspot Control</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%230d9488' d='M12 18a1.8 1.8 0 1 0 0 3.6A1.8 1.8 0 0 0 12 18Zm-4.8-3.2a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm-4.4-3.6a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm-4.4 3.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#dashboard" aria-label="WifiGuest beranda">
+      <svg class="brand-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18a1.8 1.8 0 1 0 0 3.6A1.8 1.8 0 0 0 12 18Zm-4.8-3.2a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm-4.4-3.6a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm-4.4 3.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z"/></svg>
+      <span class="brand-name">WIFIGUEST</span>
+    </a>
+    <nav class="topnav">
+      <a href="#dashboard" data-nav="dashboard">Dashboard</a>
+      <a href="#download" data-nav="download">Download Script</a>
+      <button id="logout-btn" class="btn small ghost" hidden>Keluar</button>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <section id="view-login" class="view" hidden>
+      <div class="login-card">
+        <h1>Masuk Admin</h1>
+        <p class="muted">Kontrol hotspot semua store dari satu tempat.</p>
+        <form id="login-form" novalidate>
+          <div class="field">
+            <label for="login-user">Username</label>
+            <input id="login-user" name="user" autocomplete="username" required>
+          </div>
+          <div class="field">
+            <label for="login-pw">Password</label>
+            <input id="login-pw" name="pw" type="password" autocomplete="current-password" required>
+          </div>
+          <p id="login-error" class="error" role="alert" hidden></p>
+          <button type="submit" class="btn primary block" id="login-btn">Masuk</button>
+        </form>
+        <p class="muted small center">Belum pasang di PC store? <a href="#download">Download script installer</a></p>
+      </div>
+    </section>
+
+    <section id="view-dashboard" class="view" hidden>
+      <div class="dash-head">
+        <div>
+          <h1>Dashboard Store</h1>
+          <p class="muted" id="dash-sub">Memuat…</p>
+        </div>
+        <button id="refresh-btn" class="btn ghost">Muat Ulang</button>
+      </div>
+      <div id="device-grid" class="device-grid"></div>
+      <div id="empty-state" class="empty" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18a1.8 1.8 0 1 0 0 3.6A1.8 1.8 0 0 0 12 18Zm-4.8-3.2a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm-4.4-3.6a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm4.4 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm-4.4 3.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z"/></svg>
+        <h2>Belum ada PC store terdaftar</h2>
+        <p class="muted">Download script installer, jalankan di PC store, lalu PC otomatis muncul di sini.</p>
+        <a href="#download" class="btn primary">Download Script Installer</a>
+      </div>
+    </section>
+
+    <section id="view-download" class="view" hidden>
+      <div class="download-card">
+        <h1>Pasang di PC Store</h1>
+        <ol class="steps">
+          <li>Download installer di bawah, kirim ke PC store (USB / email / share folder).</li>
+          <li>Di PC store: double-klik <code>install.bat</code> — atau klik kanan <code>install-agent.ps1</code> &rarr; <em>Run with PowerShell</em>.</li>
+          <li>Izinkan UAC (Yes), isi nama store. Hotspot <strong>Store_Guest</strong> langsung aktif dan PC otomatis terdaftar di dashboard.</li>
+        </ol>
+        <div class="dl-buttons">
+          <a class="btn primary" href="/api/script" download="install-agent.ps1">Download install-agent.ps1</a>
+          <a class="btn ghost" href="/install.bat" download="install.bat">Download install.bat</a>
+        </div>
+        <p class="muted small">
+          Hotspot: SSID <code>Store_Guest</code> · Password <code>ABAGUEST26</code> ·
+          Agent polling server tiap 15 detik · Perintah on/off sampai maksimal ±15 detik.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer muted small">WifiGuest — remote kontrol hotspot Windows tanpa VPN · PC store hanya butuh koneksi internet</footer>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "wifi-guest",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Remote kontrol hotspot Windows untuk PC store (tanpa VPN) - deploy di Netlify",
+  "scripts": {
+    "build": "node scripts/build-template.mjs",
+    "dev": "node scripts/dev-server.mjs",
+    "test": "node scripts/test-api.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.0.0"
+  }
+}
