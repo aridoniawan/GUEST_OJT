@@ -22,9 +22,12 @@ try {
 
 function Log($msg) {
   try {
-    Add-Content -Path (Join-Path $Dir 'agent.log') -Value ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg)
+    Add-Content -Path (Join-Path $Dir 'agent.log') -Value ("{0}  [pid={1}]  {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $PID, $msg)
   } catch { }
 }
+
+Log 'START'
+trap { Log "TRAP (error fatal): $($_.Exception.Message)" }
 
 # --- Helper WinRT (tahan terhadap bug proyeksi async PS 5.1 di build Windows baru) ---
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
@@ -148,7 +151,8 @@ try {
 
 # --- Loop utama ---
 $lastPollErr = ''
-while ($true) {
+try {
+  while ($true) {
   try {
     $pollBody = @{ device_id = $cfg.device_id; token = $cfg.token } | ConvertTo-Json
     $resp = Invoke-RestMethod -Uri "$($cfg.server)/api/poll" -Method Post -ContentType 'application/json; charset=utf-8' -Body $pollBody -UseBasicParsing -TimeoutSec 20
@@ -198,4 +202,7 @@ while ($true) {
     }
   }
   Start-Sleep -Seconds $interval
+  }
+} finally {
+  Log 'EXIT'
 }
