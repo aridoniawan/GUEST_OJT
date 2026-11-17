@@ -28,7 +28,7 @@ async function check(name, cond, extra = '') {
 const login = await load('login');
 const register = await load('register');
 const poll = await load('poll');
-const report = await load('report');
+const status = await load('status');
 const command = await load('command');
 const devices = await load('devices');
 
@@ -67,12 +67,12 @@ const poll2p = await poll(makeReq('POST', '/api/poll', { device_id: devId, token
 check('poll POST mengembalikan perintah ON', (await poll2p.json()).command === 'ON');
 
 console.log('== Report ==');
-const rep = await report(makeReq('POST', '/api/report', { device_id: devId, token: devToken, hotspot: 'ON', error: '' }));
+const rep = await status(makeReq('POST', '/api/status', { device_id: devId, token: devToken, hotspot: 'ON', error: '' }));
 check('report ON diterima', rep.status === 200);
 const poll3 = await poll(makeReq('GET', `/api/poll?device_id=${devId}&token=${devToken}`));
 check('perintah terhapus setelah report sukses', (await poll3.json()).command === null);
 
-const repErr = await report(makeReq('POST', '/api/report', { device_id: devId, token: devToken, hotspot: 'ERROR', error: 'Adapter tidak support' }));
+const repErr = await status(makeReq('POST', '/api/status', { device_id: devId, token: devToken, hotspot: 'ERROR', error: 'Adapter tidak support' }));
 check('report ERROR diterima', repErr.status === 200);
 
 console.log('== Devices (admin) ==');

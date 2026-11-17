@@ -260,7 +260,7 @@ try {
 if ($hotspotState -eq 'ON' -or $hotspotState -eq 'OFF') {
   try {
     $rep = @{ device_id = $deviceId; token = $token; hotspot = $hotspotState; error = $hotspotError } | ConvertTo-Json
-    $null = Invoke-RestMethod -Uri "$Server/api/report" -Method Post -ContentType 'application/json' -Body $rep -UseBasicParsing -TimeoutSec 20
+    $null = Invoke-RestMethod -Uri "$Server/api/status" -Method Post -ContentType 'application/json' -Body $rep -UseBasicParsing -TimeoutSec 20
   } catch { }
 }
 

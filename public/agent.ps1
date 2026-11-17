@@ -142,7 +142,7 @@ try {
   $st0 = Get-HotspotState
   if ($st0 -eq 'ON' -or $st0 -eq 'OFF') {
     $body0 = @{ device_id = $cfg.device_id; token = $cfg.token; hotspot = $st0; error = '' } | ConvertTo-Json
-    $null = Invoke-RestMethod -Uri "$($cfg.server)/api/report" -Method Post -ContentType 'application/json; charset=utf-8' -Body $body0 -UseBasicParsing -TimeoutSec 20
+    $null = Invoke-RestMethod -Uri "$($cfg.server)/api/status" -Method Post -ContentType 'application/json; charset=utf-8' -Body $body0 -UseBasicParsing -TimeoutSec 20
   }
 } catch { Log "report-startup GAGAL: $($_.Exception.Message)" }
 
@@ -187,7 +187,7 @@ while ($true) {
       if ($state -eq '') { $state = 'ERROR' }
       try {
         $body = @{ device_id = $cfg.device_id; token = $cfg.token; hotspot = $state; error = $err } | ConvertTo-Json
-        $null = Invoke-RestMethod -Uri "$($cfg.server)/api/report" -Method Post -ContentType 'application/json; charset=utf-8' -Body $body -UseBasicParsing -TimeoutSec 20
+        $null = Invoke-RestMethod -Uri "$($cfg.server)/api/status" -Method Post -ContentType 'application/json; charset=utf-8' -Body $body -UseBasicParsing -TimeoutSec 20
       } catch { Log "report GAGAL (state=$state): $($_.Exception.Message)" }
       Log "command=$cmd state=$state error=$err"
     }
