@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'crypto';
 import { wrap, json, readBody } from './lib/http.mjs';
-import { getDevice, setDevice } from './lib/store.mjs';
+import { getDevice, touchSeen } from './lib/store.mjs';
 
 function safeEqual(a, b) {
   const ha = createHash('sha256').update(String(a)).digest();
@@ -27,7 +27,8 @@ export default wrap(async (req) => {
   if (!dev || !safeEqual(token, dev.token)) {
     return json(403, { error: 'Device tidak dikenal' });
   }
-  dev.last_seen = Date.now();
-  await setDevice(dev);
+  // Hanya sentuh key last_seen — jangan tulis balik data device,
+  // karena read-modify-write di Blobs bisa membangkitkan pending lama.
+  await touchSeen(deviceId);
   return json(200, { command: dev.pending || null });
 });

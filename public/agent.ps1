@@ -190,7 +190,7 @@ try {
 
       if ($state -eq '') { $state = 'ERROR' }
       try {
-        $body = @{ device_id = $cfg.device_id; token = $cfg.token; hotspot = $state; error = $err } | ConvertTo-Json
+        $body = @{ device_id = $cfg.device_id; token = $cfg.token; hotspot = $state; error = $err; done = $cmd } | ConvertTo-Json
         $null = Invoke-RestMethod -Uri "$($cfg.server)/api/status" -Method Post -ContentType 'application/json; charset=utf-8' -Body $body -UseBasicParsing -TimeoutSec 20
       } catch { Log "report GAGAL (state=$state): $($_.Exception.Message)" }
       Log "command=$cmd state=$state error=$err"

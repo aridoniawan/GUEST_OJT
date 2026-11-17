@@ -3,9 +3,9 @@ import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-process.env.HOTSPOT_DATA_FILE = path.join(root, '.data', 'test-devices.json');
-await rm(process.env.HOTSPOT_DATA_FILE, { force: true });
-await mkdir(path.dirname(process.env.HOTSPOT_DATA_FILE), { recursive: true });
+process.env.HOTSPOT_DATA_DIR = path.join(root, '.data', 'test');
+await rm(process.env.HOTSPOT_DATA_DIR, { recursive: true, force: true });
+await mkdir(path.dirname(process.env.HOTSPOT_DATA_DIR), { recursive: true });
 
 const fns = path.join(root, 'netlify', 'functions');
 const fnsBase = pathToFileURL(fns + path.sep);
@@ -67,10 +67,22 @@ const poll2p = await poll(makeReq('POST', '/api/poll', { device_id: devId, token
 check('poll POST mengembalikan perintah ON', (await poll2p.json()).command === 'ON');
 
 console.log('== Report ==');
-const rep = await status(makeReq('POST', '/api/status', { device_id: devId, token: devToken, hotspot: 'ON', error: '' }));
-check('report ON diterima', rep.status === 200);
+const repNoDone = await status(makeReq('POST', '/api/status', { device_id: devId, token: devToken, hotspot: 'ON', error: '' }));
+check('report tanpa done diterima', repNoDone.status === 200);
+const pollNoDone = await poll(makeReq('GET', `/api/poll?device_id=${devId}&token=${devToken}`));
+check('pending TIDAK terhapus tanpa done', (await pollNoDone.json()).command === 'ON');
+
+const rep = await status(makeReq('POST', '/api/status', { device_id: devId, token: devToken, hotspot: 'ON', error: '', done: 'ON' }));
+check('report ON dengan done diterima', rep.status === 200);
 const poll3 = await poll(makeReq('GET', `/api/poll?device_id=${devId}&token=${devToken}`));
 check('perintah terhapus setelah report sukses', (await poll3.json()).command === null);
+
+const cmdOff = await command(makeReq('POST', '/api/command', { device_id: devId, action: 'OFF' }, adminToken));
+check('command OFF tersimpan', cmdOff.status === 200 && (await cmdOff.json()).pending === 'OFF');
+const repWrong = await status(makeReq('POST', '/api/status', { device_id: devId, token: devToken, hotspot: 'ON', error: '', done: 'ON' }));
+check('report done lama diterima', repWrong.status === 200);
+const poll4 = await poll(makeReq('GET', `/api/poll?device_id=${devId}&token=${devToken}`));
+check('pending baru TIDAK terhapus oleh done lama', (await poll4.json()).command === 'OFF');
 
 const repErr = await status(makeReq('POST', '/api/status', { device_id: devId, token: devToken, hotspot: 'ERROR', error: 'Adapter tidak support' }));
 check('report ERROR diterima', repErr.status === 200);

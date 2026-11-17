@@ -4,79 +4,112 @@ import path from 'path';
 
 let blobStore = null;
 let localMode = false;
-let localCache = null;
 
-const DATA_FILE = process.env.HOTSPOT_DATA_FILE || path.join(process.cwd(), '.data', 'devices.json');
+const DATA_DIR = process.env.HOTSPOT_DATA_DIR || path.join(process.cwd(), '.data');
 const ON_NETLIFY = Boolean(process.env.NETLIFY_BLOBS_CONTEXT);
 
-async function blobGet() {
-  if (!blobStore) blobStore = getStore('hotspot');
+const KEY_DEVICES = 'devices';
+const KEY_SEEN = 'last_seen';
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function withRetry(fn) {
   let lastErr;
   for (let i = 0; i < 3; i++) {
     try {
-      const raw = await blobStore.get('devices', { type: 'json' });
-      return raw && typeof raw === 'object' ? raw : {};
+      return await fn();
     } catch (e) {
       lastErr = e;
-      await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+      await sleep(200 * (i + 1));
     }
   }
   throw lastErr;
 }
 
-async function readAll() {
+function blobGet(key) {
+  if (!blobStore) blobStore = getStore('hotspot');
+  return withRetry(async () => {
+    const raw = await blobStore.get(key, { type: 'json' });
+    return raw && typeof raw === 'object' ? raw : {};
+  });
+}
+
+function blobSet(key, data) {
+  return withRetry(() => blobStore.set(key, JSON.stringify(data)));
+}
+
+function localFile(key) {
+  return path.join(DATA_DIR, `${key}.json`);
+}
+
+async function localRead(key) {
+  try {
+    const data = JSON.parse(await fs.readFile(localFile(key), 'utf8'));
+    return data && typeof data === 'object' ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+async function localWrite(key, data) {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(localFile(key), JSON.stringify(data, null, 2));
+}
+
+async function readKey(key) {
   if (!localMode) {
     try {
-      return await blobGet();
+      return await blobGet(key);
     } catch (e) {
       if (ON_NETLIFY) {
         // Di Netlify tidak ada file lokal yang berguna; lempar agar jadi 500,
         // bukan fallback kosong yang menyesatkan jadi 403 "device tidak dikenal".
         throw e;
       }
-      if (!process.env.HOTSPOT_DATA_FILE) console.warn('Netlify Blobs tidak tersedia, pakai file lokal:', e.message);
+      if (!process.env.HOTSPOT_DATA_DIR) console.warn('Netlify Blobs tidak tersedia, pakai file lokal:', e.message);
       localMode = true;
       blobStore = null;
     }
   }
-  if (localCache === null) {
-    try {
-      localCache = JSON.parse(await fs.readFile(DATA_FILE, 'utf8'));
-    } catch {
-      localCache = {};
-    }
-  }
-  return localCache;
+  return localRead(key);
 }
 
-async function writeAll(data) {
+async function writeKey(key, data) {
   if (!localMode) {
     try {
-      await blobStore.set('devices', JSON.stringify(data));
+      await blobSet(key, data);
       return;
-    } catch {
+    } catch (e) {
+      if (ON_NETLIFY) throw e;
       localMode = true;
+      blobStore = null;
     }
   }
-  localCache = data;
-  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2));
+  await localWrite(key, data);
 }
 
 export async function getDevice(id) {
-  const all = await readAll();
+  const all = await readKey(KEY_DEVICES);
   return all[id] || null;
 }
 
 export async function setDevice(dev) {
-  const all = await readAll();
+  const all = await readKey(KEY_DEVICES);
   all[dev.id] = dev;
-  await writeAll(all);
+  await writeKey(KEY_DEVICES, all);
+}
+
+export async function touchSeen(id) {
+  const seen = await readKey(KEY_SEEN);
+  seen[id] = Date.now();
+  await writeKey(KEY_SEEN, seen);
 }
 
 export async function listDevices() {
-  const all = await readAll();
-  return Object.values(all).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  const [all, seen] = await Promise.all([readKey(KEY_DEVICES), readKey(KEY_SEEN)]);
+  return Object.values(all)
+    .map((dev) => ({ ...dev, last_seen: seen[dev.id] || dev.last_seen || null }))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
 }
 
 export function publicDevice(dev) {

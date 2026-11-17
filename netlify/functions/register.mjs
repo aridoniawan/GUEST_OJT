@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { wrap, json, readBody } from './lib/http.mjs';
-import { getDevice, setDevice } from './lib/store.mjs';
+import { getDevice, setDevice, touchSeen } from './lib/store.mjs';
 
 export default wrap(async (req) => {
   if (req.method !== 'POST') return json(405, { error: 'Method tidak diizinkan' });
@@ -12,8 +12,8 @@ export default wrap(async (req) => {
   const existing = await getDevice(device_id);
   if (existing) {
     existing.name = storeName;
-    existing.last_seen = Date.now();
     await setDevice(existing);
+    await touchSeen(device_id);
     return json(200, { ok: true, device_id: existing.id, token: existing.token });
   }
   const token = randomBytes(16).toString('hex');
@@ -22,10 +22,10 @@ export default wrap(async (req) => {
     name: storeName,
     token,
     hotspot: 'UNKNOWN',
-    last_seen: Date.now(),
     pending: null,
     error: null,
     created: Date.now()
   });
+  await touchSeen(device_id);
   return json(200, { ok: true, device_id, token });
 });
